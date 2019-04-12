@@ -1375,13 +1375,7 @@ def load(savefilepath, autoRespond):
             printLog(device, 'Successfully loaded values from ' + savefilepath)
 
 
-def save(deviceList, savefilepath):
-    """ Save clock frequencies and fan speeds for a list of devices to a specified file path.
-
-    Parameters:
-    deviceList -- List of devices to save the clock frequencies and fan speeds
-    savefilepath -- Location to save the clock frequencies and fan speeds
-    """
+def get_json_data():
     perfLevels = {}
     gpuClocks = {}
     memClocks = {}
@@ -1392,9 +1386,6 @@ def save(deviceList, savefilepath):
     profiles = {}
     jsonData = {}
 
-    if os.path.isfile(savefilepath):
-        print(savefilepath, 'already exists. Settings not saved')
-        sys.exit()
     for device in deviceList:
         if not isDPMAvailable(device):
             printLog(device, 'DPM not available - Cannot save clocks')
@@ -1408,9 +1399,30 @@ def save(deviceList, savefilepath):
         overDriveGpuMem[device] = getSysfsValue(device, 'mclk_od')
         profiles[device] = getProfile(device)
         jsonData[device] = {'vJson': JSON_VERSION, 'gpu': gpuClocks[device], 'mem': memClocks[device], 'pcie': pcieClocks[device], 'fan': fanSpeeds[device], 'overdrivegpu': overDriveGpu[device], 'overdrivegpumem': overDriveGpuMem[device], 'profile': profiles[device], 'perflevel': perfLevels[device]}
-        printLog(device, 'Current settings successfully saved to ' + savefilepath)
+
+    return jsonData
+
+
+def save(deviceList, savefilepath):
+    """ Save clock frequencies and fan speeds for a list of devices to a specified file path.
+
+    Parameters:
+    deviceList -- List of devices to save the clock frequencies and fan speeds
+    savefilepath -- Location to save the clock frequencies and fan speeds
+    """
+    if os.path.isfile(savefilepath):
+        print(savefilepath, 'already exists. Settings not saved')
+        sys.exit()
+
+    jsonData = get_json_data()
+
     with open(savefilepath, 'w') as savefile:
         json.dump(jsonData, savefile, ensure_ascii=True)
+
+
+def print_json(devicelist):
+    print(get_json_data())
+
 
 # Below is for when called as a script instead of when imported as a module
 if __name__ == '__main__':
@@ -1465,6 +1477,7 @@ if __name__ == '__main__':
     groupResponse.add_argument('--autorespond', help='Response to automatically provide for all prompts (NOT RECOMMENDED)', metavar='RESPONSE')
 
     groupOutput.add_argument('--loglevel', help='How much output will be printed for what program is doing, one of debug/info/warning/error/critical', metavar='ILEVEL')
+    groupOutput.add_argument('--print-json', help='Save Clock, Fan, Performance and Profile settings to stdout', action='store_true')
 
     args = parser.parse_args()
 
@@ -1510,7 +1523,8 @@ if __name__ == '__main__':
         relaunchAsSudo()
 
     # Header for the SMI
-    print('\n\n', headerSpacer, '        ROCm System Management Interface        ', headerSpacer, sep='')
+    if not args.print_json:
+        print('\n\n', headerSpacer, '        ROCm System Management Interface        ', headerSpacer, sep='')
 
     # If all fields are requested, only print it for devices with DPM support. There is no point
     # in printing a bunch of "Feature unavailable" messages and cluttering the output
@@ -1596,11 +1610,14 @@ if __name__ == '__main__':
         load(args.load, args.autorespond)
     if args.save:
         save(deviceList, args.save)
+    if args.print_json:
+        print_json(deviceList)
 
     # If RETCODE isn't 0, inform the user
     if RETCODE:
         print('WARNING: One or more commands failed')
 
     # Footer for the SMI
-    print(headerSpacer, '               End of ROCm SMI Log              ', headerSpacer, '\n', sep='')
+    if not args.print_json:
+        print(headerSpacer, '               End of ROCm SMI Log              ', headerSpacer, '\n', sep='')
     sys.exit(RETCODE)
